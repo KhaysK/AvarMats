@@ -722,7 +722,7 @@ function renderQ(q, fmt) {
       <div class="slot" id="ans"></div><div class="bank" id="bank"></div>`;
     dock = `<button class="btn primary wide" id="check" disabled>Проверить</button>`;
   } else { // type / fixtype
-    body = `<div class="lbl">${fmt === 'type' ? 'Напиши на аварском' : 'Найди ошибку и впиши предложение верно'}</div>
+    body = `<div class="lbl">${fmt === 'type' ? 'Напиши на аварском' : 'Найди ошибку и впиши предложение целиком верно'}</div>
       ${fmt === 'fixtype' ? `<div class="big bad small">${esc(it.wrong)}</div>` : ''}<div class="ru big2">${esc(it.ru)}</div>
       <input id="inp" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ответ…">
       <div class="keys">${SPECIAL.map(k => `<button class="key" data-k="${k}">${k}</button>`).join('')}</div>
@@ -760,8 +760,7 @@ function renderQ(q, fmt) {
       answer(ok, given);
     };
   } else {
-    const inp = document.getElementById('inp'); if (fmt === 'fixtype') inp.value = it.wrong;
-    setTimeout(() => { try { inp.focus(); const n = inp.value.length; inp.setSelectionRange(n, n); } catch (e) {} }, 50);
+    const inp = document.getElementById('inp'); setTimeout(() => { try { inp.focus(); } catch (e) {} }, 50);
     $app.querySelectorAll('.key').forEach(k => k.onmousedown = (e) => { e.preventDefault(); });
     $app.querySelectorAll('.key').forEach(k => k.onclick = () => {
       const s = inp.selectionStart ?? inp.value.length, e = inp.selectionEnd ?? s;
