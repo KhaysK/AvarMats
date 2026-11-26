@@ -126,8 +126,7 @@ const RAW = [
 гьел | они
 ниж | мы
 нуж | вы
-${adjWords('big','small','high','low')}`,
-    phrases: `дун вуго | я есть (м)
+дун вуго | я есть (м)
 дун йиго | я есть (ж)
 мун вуго | ты есть (м)
 мун йиго | ты есть (ж)
@@ -137,7 +136,8 @@ ${adjWords('big','small','high','low')}`,
 гьей йиго | она есть
 гьеб буго | оно есть
 гьел руго | они есть
-дун МухІаммад вуго | я Мухаммад
+${adjWords('big','small','high','low')}`,
+    phrases: `дун МухІаммад вуго | я Мухаммад
 дун ГІазра йиго | я Азра
 мун МухІаммад вуго | ты Мухаммад
 мун ГІазра йиго | ты Азра
@@ -181,8 +181,7 @@ ${sentences(['гьеб','гьев','гьей','гьел'], ['оно','он','о�
 дов | тот
 дой | та
 дол | те
-${adjWords('beaut','ugly','good','bad')}`,
-    phrases: `гьаб буго | это есть
+гьаб буго | это есть
 гьав вуго | этот есть
 гьай йиго | эта есть
 гьал руго | эти есть
@@ -190,7 +189,8 @@ ${adjWords('beaut','ugly','good','bad')}`,
 дов вуго | тот есть
 дой йиго | та есть
 дол руго | те есть
-гьав Арсен вуго | этот Арсен
+${adjWords('beaut','ugly','good','bad')}`,
+    phrases: `гьав Арсен вуго | этот Арсен
 гьай ГІазра йиго | эта Азра
 дов Муса вуго | тот Муса
 дой Зайнаб йиго | та Зайнаб
@@ -376,15 +376,7 @@ ${adjWords('rich','poor','clever','stupid')}`,
 гьезул | их
 нижер | наш
 нужер | ваш
-гьудул | друг, подруга
-гьудулзаби | друзья
-тушман | враг
-тушбаби | враги
-мадугьал | сосед, соседка
-мадугьалзаби | соседи
-гьобол | гость, гостья
-гьалбал | гости`,
-    phrases: `дир вуго | мой есть (м)
+дир вуго | мой есть (м)
 дир йиго | моя есть (ж)
 дир буго | моё есть (ср)
 дур вуго | твой есть (м)
@@ -396,7 +388,15 @@ ${adjWords('rich','poor','clever','stupid')}`,
 гьесул вуго | его есть (м)
 гьелъул йиго | её есть (ж)
 гьезул руго | их есть (мн)
-дир МухІаммад | мой Мухаммад
+гьудул | друг, подруга
+гьудулзаби | друзья
+тушман | враг
+тушбаби | враги
+мадугьал | сосед, соседка
+мадугьалзаби | соседи
+гьобол | гость, гостья
+гьалбал | гости`,
+    phrases: `дир МухІаммад | мой Мухаммад
 дир ГІазра | моя Азра
 дур ГІазра йиго | у тебя есть Азра
 гьесул ГІазра йиго | у него есть Азра
@@ -463,13 +463,12 @@ const LESSONS = RAW.map(L => {
   for (const l of lines(L.words)) { const [ar, ru] = l.split('|').map(x => x.trim()); push({ t: 'w', ar, ru, n: L.n }); }
   for (const l of lines(L.phrases)) { const [ar, ru] = l.split('|').map(x => x.trim()); push({ t: 'p', ar, ru, n: L.n }); }
   const fixes = lines(L.fixes).map(l => { const [wrong, right, ru] = l.split('|').map(x => x.trim()); return { t: 'f', ar: right, wrong, ru, n: L.n }; });
-  // порядок введения: слова → фразы, исправления вперемешку с фразами
-  const base = items.filter(i => i.t === 'w').concat(items.filter(i => i.t === 'p'));
-  const ordered = []; let fi = 0;
-  const nWords = items.filter(i => i.t === 'w').length;
-  base.forEach((it, idx) => { ordered.push(it); if (idx >= nWords && (idx - nWords) % 4 === 3 && fi < fixes.length) ordered.push(fixes[fi++]); });
-  while (fi < fixes.length) ordered.push(fixes[fi++]);
+  // учатся только слова; фразы и «ошибки» — практика, привязанная к словам урока
+  const ordered = items.filter(i => i.t === 'w').concat(items.filter(i => i.t === 'p'), fixes);
   ordered.forEach(it => { it.key = it.n + ':' + it.ar; });
+  const wmap = new Map();
+  ordered.filter(i => i.t === 'w' && !/\s/.test(i.ar)).forEach(w => { const k = norm(w.ar); if (!wmap.has(k)) wmap.set(k, w.key); });
+  ordered.filter(i => i.t !== 'w').forEach(it => { it.req = [...new Set(it.ar.split(/\s+/).map(x => wmap.get(norm(x))).filter(Boolean))]; });
   return { n: L.n, title: L.title, sub: L.sub, items: ordered };
 });
 const ALL = LESSONS.flatMap(L => L.items);
@@ -507,6 +506,7 @@ function distractors(it, field, count) {
   const same = field === 'ru' ? ARS_FOR_RU[norm(it.ru)] : null;
   const ownRu = new Set([norm(it.ru)]);
   let pool = TRANSL.filter(x => x.key !== it.key && (field === 'ru' ? !ownRu.has(norm(x.ru)) : !(same && same.has(norm(x.ar)))));
+  const sameT = pool.filter(x => (it.t === 'w') === (x.t === 'w')); if (sameT.length >= 8) pool = sameT;
   const sameLesson = pool.filter(x => x.n === it.n);
   if (sameLesson.length >= 10) pool = sameLesson;
   const tc = tokens(it[field]).length;
@@ -534,21 +534,22 @@ const SPECIAL = ['І', 'гъ', 'гь', 'гІ', 'къ', 'кк', 'кв', 'кІ', '
 // ===== ЭКРАНЫ =====
 function home() {
   S = null; location.hash = '';
-  const seenAll = ALL.filter(i => rec(i.key).s).length;
-  const weakAll = ALL.filter(i => isWeak(i.key)).length;
+  const seenAll = ALL.filter(i => i.t === 'w' && rec(i.key).s).length;
+  const weakAll = ALL.filter(i => i.t === 'w' && isWeak(i.key)).length;
   let h = `<header><h1>Авар мацІ</h1><p class="sub">Карточки по урокам · прогресс хранится в этом браузере</p></header>`;
   h += `<div class="row2">
     <button class="btn" data-act="practice-all" ${seenAll ? '' : 'disabled'}>Все уроки<small>повторение</small></button>
     <button class="btn" data-act="practice-weak" ${weakAll ? '' : 'disabled'}>Слабые места<small>${weakAll} шт.</small></button></div>`;
   for (const L of LESSONS) {
-    const tot = L.items.length;
-    const seen = L.items.filter(i => rec(i.key).s).length;
-    const learned = L.items.filter(i => rec(i.key).b >= 3).length;
-    const weak = L.items.filter(i => isWeak(i.key)).length;
-    const nw = L.items.filter(i => i.t === 'w').length, np = L.items.filter(i => i.t === 'p').length, nf = L.items.filter(i => i.t === 'f').length;
+    const W = L.items.filter(i => i.t === 'w');
+    const tot = W.length;
+    const seen = W.filter(i => rec(i.key).s).length;
+    const learned = W.filter(i => rec(i.key).b >= 3).length;
+    const weak = W.filter(i => isWeak(i.key)).length;
+    const nw = tot, nf = L.items.length - tot;
     h += `<section class="card lesson">
-      <div class="lh"><div><h2>${L.title}</h2><div class="sub">${esc(L.sub)}</div></div><div class="cnt">${tot}</div></div>
-      <div class="meta">${nw} слов · ${np} фраз · ${nf} исправлений</div>
+      <div class="lh"><div><h2>${L.title}</h2><div class="sub">${esc(L.sub)}</div></div><div class="cnt">${tot} слов</div></div>
+      <div class="meta">${nw} слов для заучивания · ${nf} фраз для практики</div>
       <div class="bar"><i style="width:${Math.round(learned / tot * 100)}%"></i><i class="b2" style="width:${Math.round((seen - learned) / tot * 100)}%"></i></div>
       <div class="meta">выучено ${learned} · начато ${seen}${weak ? ` · <b class="warn">слабых ${weak}</b>` : ''}</div>
       <div class="row2"><button class="btn primary" data-act="practice" data-n="${L.n}">Практика</button>
@@ -608,35 +609,55 @@ function weightOf(k) {
   const days = r.t ? Math.min(14, (Date.now() - r.t) / 864e5) : 0;
   return base * (1 + Math.min(r.w, 5) * 0.3) * (1 + days / 7);
 }
-function startPractice(opt) {
-  let pool = opt.all ? ALL.slice() : ALL.filter(i => opt.lessons.includes(i.n));
-  const seen = pool.filter(i => rec(i.key).s);
-  let fresh = opt.all ? [] : pool.filter(i => !rec(i.key).s).slice(0, NEW_PER_SESSION);
-  let review = opt.weak ? seen.filter(i => isWeak(i.key) || rec(i.key).b <= 1) : seen;
-  const want = Math.max(0, SESSION_LEN - fresh.length);
-  const picked = []; const rest = review.slice();
-  while (picked.length < want && rest.length) {
-    const ws = rest.map(i => weightOf(i.key)); let tot = ws.reduce((a, b) => a + b, 0); let x = Math.random() * tot; let idx = 0;
+function eligible(it, extra) { return (it.req || []).every(k => rec(k).s || (extra && extra.has(k))); }
+function sampleWeighted(arr, n, wf) {
+  const rest = arr.slice(), out = [];
+  while (out.length < n && rest.length) {
+    const ws = rest.map(wf); let x = Math.random() * ws.reduce((a, b) => a + b, 0), idx = 0;
     for (; idx < rest.length; idx++) { x -= ws[idx]; if (x <= 0) break; }
-    picked.push(rest.splice(Math.min(idx, rest.length - 1), 1)[0]);
+    out.push(rest.splice(Math.min(idx, rest.length - 1), 1)[0]);
   }
+  return out;
+}
+function sentWeight(it) {
+  const reqs = it.req || []; const r = rec(it.key);
+  const wk = reqs.length ? reqs.reduce((a, k) => a + weightOf(k), 0) / reqs.length : 2;
+  const days = r.t ? (Date.now() - r.t) / 864e5 : 14;
+  return wk * (days < 1 ? 0.2 : 1 + Math.min(days, 14) / 7) * (1 + Math.min(r.w, 5) * 0.3);
+}
+function startPractice(opt) {
+  const pool = opt.all ? ALL.slice() : ALL.filter(i => opt.lessons.includes(i.n));
+  const words = pool.filter(i => i.t === 'w');
+  const fresh = opt.all ? [] : words.filter(i => !rec(i.key).s).slice(0, NEW_PER_SESSION);
+  const seenW = words.filter(i => rec(i.key).s);
+  const revW = opt.weak ? seenW.filter(i => isWeak(i.key) || rec(i.key).b <= 1) : seenW;
+  const freshKeys = new Set(fresh.map(i => i.key));
+  let sents = pool.filter(i => i.t !== 'w' && eligible(i, freshKeys));
+  if (opt.weak) sents = sents.filter(i => (i.req || []).some(k => isWeak(k) || rec(k).b <= 1));
+  const R = Math.max(0, SESSION_LEN - fresh.length);
+  let sT = Math.min(sents.length, Math.round(R * 0.45));
+  let wT = Math.min(revW.length, R - sT);
+  if (wT < R - sT) sT = Math.min(sents.length, R - wT);
+  const pickedW = sampleWeighted(revW, wT, i => weightOf(i.key));
+  const pickedS = sampleWeighted(sents, sT, sentWeight);
   const queue = [];
   fresh.forEach(i => queue.push({ it: i, intro: true }));
-  shuffle(fresh.concat(picked)).forEach(i => queue.push({ it: i, retry: 0, missed: false }));
+  shuffle(fresh.concat(pickedW, pickedS)).forEach(i => queue.push({ it: i, retry: 0, missed: false }));
   if (!queue.length) { home(); return; }
   S = { mode: 'practice', opt, queue, total: queue.filter(q => !q.intro).length, done: 0, ok: 0, miss: [], lastFmt: {} };
   nextQ();
 }
 function pickFmt(it, q) {
-  const k = rec(it.key);
-  const multi = it.t !== 'f' && tokens(it.ar).length >= 2;
+  const multi = tokens(it.ar).length >= 2;
   let opts;
-  if (it.t === 'f') opts = k.b === 0 ? ['fixchoice'] : k.b <= 2 ? ['fixbuild'] : ['fixtype', 'fixbuild'];
-  else if (k.b === 0) opts = ['ar2ru'];
-  else if (k.b === 1) opts = ['ru2ar'];
-  else if (k.b === 2) opts = multi ? ['build'] : ['type'];
-  else if (k.b === 3) opts = ['type'];
-  else opts = multi ? ['type', 'build', 'ar2ru'] : ['type', 'ar2ru'];
+  if (it.t === 'w') {
+    const b = rec(it.key).b;
+    opts = b === 0 ? ['ar2ru'] : b === 1 ? ['ru2ar'] : b === 2 ? (multi ? ['build'] : ['type']) : b === 3 ? ['type'] : (multi ? ['type', 'build', 'ar2ru'] : ['type', 'ar2ru']);
+  } else {
+    const lvl = (it.req && it.req.length) ? Math.min(...it.req.map(k => rec(k).b)) : 2;
+    if (it.t === 'f') opts = lvl <= 1 ? ['fixchoice'] : lvl === 2 ? ['fixbuild'] : ['fixtype', 'fixbuild'];
+    else opts = lvl <= 1 ? ['ar2ru'] : lvl === 2 ? (multi ? ['build', 'ru2ar'] : ['type']) : (multi ? ['type', 'build', 'ru2ar'] : ['type']);
+  }
   if (q.retry) {
     opts = it.t === 'f' ? ['fixchoice', 'fixbuild', 'fixtype'] : multi ? ['ar2ru', 'ru2ar', 'build', 'type'] : ['ar2ru', 'ru2ar', 'type'];
     opts = opts.filter(o => o !== S.lastFmt[it.key]);
@@ -745,8 +766,14 @@ function answer(ok, given) {
   S.fbAt = Date.now();
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); // убрать клавиатуру
   const r = Object.assign({}, rec(it.key)); r.s = 1; r.t = Date.now();
-  if (ok) { r.r++; r.b = q.missed ? Math.max(r.b, 1) : Math.min(4, r.b + 1); }
-  else { r.w++; r.b = 0; }
+  if (it.t === 'w') {
+    if (ok) { r.r++; r.b = q.missed ? Math.max(r.b, 1) : Math.min(4, r.b + 1); }
+    else { r.w++; r.b = 0; }
+  } else if (ok) r.r++;
+  else { // ошибка во фразе: слова из неё считаем менее выученными
+    r.w++;
+    if (!q.missed) (it.req || []).forEach(k => { const x = Object.assign({}, rec(k)); x.b = Math.max(0, x.b - 1); ST.it[k] = x; });
+  }
   ST.it[it.key] = r; save();
   let again = false;
   if (ok) { S.done++; if (!q.missed) S.ok++; }
@@ -762,7 +789,7 @@ function answer(ok, given) {
     ${ok && (S.fmt === 'ar2ru') ? '' : `<div class="fba">${ok ? '' : 'Правильно: '}<b>${esc(shown)}</b></div>`}
     ${!ok && given ? `<div class="fbg">Ты написал: ${esc(given)}</div>` : ''}
     ${(S.fmt === 'ar2ru' && !ok) ? `<div class="fbg">${esc(it.ar)}</div>` : ''}
-    ${again ? '<div class="fbg">Это слово ещё встретится — позже и по-другому.</div>' : ''}
+    ${again ? '<div class="fbg">Это ещё встретится — позже и по-другому.</div>' : ''}
     <button class="btn primary wide" id="nx">Дальше</button></div>`;
   const nx = document.getElementById('nx'); nx.onclick = () => { if (Date.now() - S.fbAt > 300) nextQ(); };
   const top = document.querySelector('.prog i'); if (top) top.style.width = Math.round(S.done / S.total * 100) + '%';
