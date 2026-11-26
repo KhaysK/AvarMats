@@ -28,7 +28,7 @@ footer{text-align:center;margin-top:20px}
 .prog{flex:1;height:10px;background:var(--ln);border-radius:99px;overflow:hidden}.prog i{display:block;height:100%;background:var(--ac);transition:width .3s}
 .lbl{color:var(--mu);font-size:13px;margin-bottom:10px}
 .big{font-size:27px;font-weight:700;line-height:1.25;word-break:break-word}.big.small{font-size:19px;margin-bottom:6px}.big2{font-size:21px;font-weight:600;margin-bottom:14px}
-.big.bad{color:var(--badt);text-decoration:line-through;text-decoration-thickness:2px}.big.good{color:var(--goodt)}
+.big.bad{color:var(--badt)}.big.bad::before{content:'✗ '}.big.good{color:var(--goodt)}.big.good::before{content:'✓ '}
 .ru{color:var(--mu);font-size:18px;margin-top:6px}
 .arrow{color:var(--mu);margin:8px 0}
 .intro{text-align:center;padding:30px 16px}
@@ -516,13 +516,25 @@ function distractors(it, field, count) {
   for (const { x } of scored) { const v = norm(x[field]); if (used.has(v)) continue; used.add(v); out.push(x[field]); if (out.length >= count) break; }
   return out;
 }
-function bankTokens(it, extra) {
-  const target = tokens(it.ar); const tset = new Set(target.map(norm));
-  const pool = TRANSL.filter(x => x.key !== it.key && x.n === it.n);
-  const cand = new Map();
-  pool.forEach(x => tokens(x.ar).forEach(w => { if (!tset.has(norm(w))) cand.set(norm(w), w); }));
-  const scored = [...cand.values()].map(w => ({ w, s: Math.max(...target.map(t => sim(w, t))) + Math.random() * 0.2 })).sort((a, b) => b.s - a.s);
-  return target.concat(scored.slice(0, extra).map(o => o.w));
+const FAMS = [['вуго', 'йиго', 'буго', 'руго'], ['дун', 'мун', 'ниж', 'нуж'], ['гьев', 'гьей', 'гьеб', 'гьел'], ['гьаб', 'гьав', 'гьай', 'гьал'], ['доб', 'дов', 'дой', 'дол'], ['дир', 'дур', 'нижер', 'нужер', 'гьесул', 'гьелъул', 'гьезул']];
+function bankTokens(it) {
+  const clean = (w) => w.replace(/[,.;:!?]+$/, '');
+  const target = tokens(it.ar).map(clean); const tset = new Set(target.map(norm));
+  const extra = []; const add = (w) => { w = clean(w); if (w && !tset.has(norm(w)) && !extra.some(e => norm(e) === norm(w))) extra.push(w); };
+  // 1) та же «семья» слов: все формы «есть», местоимения и т.д.
+  target.forEach(t => FAMS.forEach(f => { if (f.some(x => norm(x) === norm(t))) shuffle(f.filter(x => !tset.has(norm(x)))).slice(0, 3).forEach(add); }));
+  // 2) похожие формы (другой род / число) для каждого слова
+  const pool = []; const seenP = new Set();
+  TRANSL.forEach(x => tokens(x.ar).forEach(w => { w = clean(w); const k = norm(w); if (!seenP.has(k) && !tset.has(k)) { seenP.add(k); pool.push({ w, n: x.n }); } }));
+  target.forEach(t => {
+    const best = pool.map(p => ({ w: p.w, s: sim(p.w, t) + Math.random() * 0.1 })).sort((a, b) => b.s - a.s).slice(0, 3);
+    best.slice(0, 2).forEach(b => { if (b.s > 0.25) add(b.w); });
+  });
+  // 3) случайные слова из урока — до нужного количества
+  const minExtra = target.length <= 2 ? 5 : 4;
+  shuffle(pool.filter(p => p.n === it.n)).forEach(p => { if (extra.length < minExtra) add(p.w); });
+  const tail = shuffle(extra).slice(0, 7);
+  return target.concat(tail);
 }
 
 // ===== СОСТОЯНИЕ СЕССИИ =====
@@ -648,6 +660,7 @@ function startPractice(opt) {
   nextQ();
 }
 function pickFmt(it, q) {
+  if (it.t === 'f') return 'fixtype';
   const multi = tokens(it.ar).length >= 2;
   let opts;
   if (it.t === 'w') {
@@ -701,7 +714,7 @@ function renderQ(q, fmt) {
       <div class="opts">${opts.map((o, i) => `<button class="opt" data-i="${i}">${esc(o)}</button>`).join('')}</div>`;
     S.opts = opts;
   } else if (fmt === 'build' || fmt === 'fixbuild') {
-    const toks = fmt === 'build' ? bankTokens(it, tokens(it.ar).length >= 4 ? 3 : 2)
+    const toks = fmt === 'build' ? bankTokens(it)
       : (() => { const rt = tokens(it.ar); const rs = new Set(rt.map(norm)); const ex = tokens(it.wrong).filter(w => !rs.has(norm(w))); return rt.concat([...new Set(ex)]); })();
     S.bank = shuffle(toks.map((w, i) => ({ w, id: i }))); S.ans = [];
     body = `<div class="lbl">${fmt === 'build' ? 'Собери предложение' : 'Исправь ошибку — собери верно'}</div>
@@ -709,7 +722,7 @@ function renderQ(q, fmt) {
       <div class="slot" id="ans"></div><div class="bank" id="bank"></div>`;
     dock = `<button class="btn primary wide" id="check" disabled>Проверить</button>`;
   } else { // type / fixtype
-    body = `<div class="lbl">${fmt === 'type' ? 'Напиши на аварском' : 'Исправь ошибку — напиши верно'}</div>
+    body = `<div class="lbl">${fmt === 'type' ? 'Напиши на аварском' : 'Найди ошибку и впиши предложение верно'}</div>
       ${fmt === 'fixtype' ? `<div class="big bad small">${esc(it.wrong)}</div>` : ''}<div class="ru big2">${esc(it.ru)}</div>
       <input id="inp" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ответ…">
       <div class="keys">${SPECIAL.map(k => `<button class="key" data-k="${k}">${k}</button>`).join('')}</div>
@@ -747,7 +760,8 @@ function renderQ(q, fmt) {
       answer(ok, given);
     };
   } else {
-    const inp = document.getElementById('inp'); setTimeout(() => { try { inp.focus(); } catch (e) {} }, 50);
+    const inp = document.getElementById('inp'); if (fmt === 'fixtype') inp.value = it.wrong;
+    setTimeout(() => { try { inp.focus(); const n = inp.value.length; inp.setSelectionRange(n, n); } catch (e) {} }, 50);
     $app.querySelectorAll('.key').forEach(k => k.onmousedown = (e) => { e.preventDefault(); });
     $app.querySelectorAll('.key').forEach(k => k.onclick = () => {
       const s = inp.selectionStart ?? inp.value.length, e = inp.selectionEnd ?? s;
