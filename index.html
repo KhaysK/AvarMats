@@ -502,6 +502,28 @@ const rec = (k) => ST.it[k] || { b: 0, s: 0, w: 0, r: 0, t: 0 };
 const isWeak = (k) => { const r = rec(k); return r.s && (r.b <= 1) && r.w > 0; };
 
 // ===== ВЫБОР ВАРИАНТОВ =====
+// «Мутации»: правдоподобные неверные варианты — меняем род/число, антоним, форму «есть» и т.п.
+const FAMS = [['вуго', 'йиго', 'буго', 'руго'], ['дун', 'мун', 'ниж', 'нуж'], ['гьев', 'гьей', 'гьеб', 'гьел'], ['гьаб', 'гьав', 'гьай', 'гьал'], ['доб', 'дов', 'дой', 'дол'], ['дир', 'дур', 'нижер', 'нужер', 'гьесул', 'гьелъул', 'гьезул']];
+const ANT = [['big', 'small'], ['high', 'low', 'short'], ['beaut', 'ugly'], ['good', 'bad'], ['old', 'young'], ['mature', 'adult'], ['rich', 'poor'], ['clever', 'stupid']];
+const ruSlots = [['оно', 'он', 'она', 'они'], ['это', 'этот', 'эта', 'эти'], ['то', 'тот', 'та', 'те'], ['моё', 'мой', 'моя', 'мои'], ['твоё', 'твой', 'твоя', 'твои'], ['наше', 'наш', 'наша', 'наши'], ['ваше', 'ваш', 'ваша', 'ваши'], ['(ср)', '(м)', '(ж)', '(мн)']].concat(Object.values(ADJ).map(a => a.ru));
+const arSlots = [['гьеб', 'гьев', 'гьей', 'гьел'], ['гьаб', 'гьав', 'гьай', 'гьал'], ['доб', 'дов', 'дой', 'дол'], ['буго', 'вуго', 'йиго', 'руго']].concat(Object.values(ADJ).map(a => a.ar));
+const ruGroups = [['я', 'ты'], ['мы', 'вы'], ['отец', 'брат', 'сын', 'мальчик', 'друг', 'враг', 'папа', 'мужчина'], ['мать', 'сестра', 'дочь', 'девочка', 'мама', 'женщина', 'подруга'], ['отцы', 'братья', 'сыновья', 'друзья', 'враги', 'соседи', 'гости'], ['матери', 'сёстры', 'дочери', 'женщины']];
+for (let g = 0; g < 4; g++) ANT.forEach(grp => ruGroups.push(grp.map(n => ADJ[n].ru[g])));
+const arGroups = FAMS.concat(ANT.map(grp => grp.flatMap(n => ADJ[n].ar)));
+const famMap = (groups) => { const m = new Map(); groups.forEach(g => g.forEach(w => { const k = norm(w); if (!m.has(k)) m.set(k, g); })); return m; };
+const slotMap = (slots) => { const m = new Map(); slots.forEach(a => a.forEach((w, i) => { const k = norm(w); if (!m.has(k)) m.set(k, { a, i }); })); return m; };
+const FAM_RU = famMap(ruGroups), FAM_AR = famMap(arGroups), SLOT_RU = slotMap(ruSlots), SLOT_AR = slotMap(arSlots);
+function mutate(str, fam, slots, exclude) {
+  const parts = str.split(/\s+/).map(t => { const m = t.match(/^([^,.;:!?]*)([,.;:!?]*)$/); return m ? { core: m[1], tail: m[2] } : { core: t, tail: '' }; });
+  const cap = (src, w) => (/^[A-ZА-ЯЁІ]/.test(src) && w ? w[0].toUpperCase() + w.slice(1) : w);
+  const ex = new Set(exclude.map(norm)); const out = [];
+  const add = (rep) => { const s = parts.map((p, i) => (rep[i] !== undefined ? cap(p.core, rep[i]) : p.core) + p.tail).join(' '); if (!ex.has(norm(s)) && !out.includes(s)) out.push(s); };
+  parts.forEach((p, i) => { const g = fam.get(norm(p.core)); if (g) g.forEach(w => { if (norm(w) !== norm(p.core)) add({ [i]: w }); }); });
+  for (let j = 0; j < 4; j++) { const rep = {}; let ch = 0; parts.forEach((p, i) => { const sl = slots.get(norm(p.core)); if (sl && sl.i !== j) { rep[i] = sl.a[j]; ch++; } }); if (ch) add(rep); }
+  const idx = parts.map((p, i) => fam.get(norm(p.core)) ? i : -1).filter(i => i >= 0);
+  if (idx.length >= 2) for (let k = 0; k < 10; k++) { const [a, b] = shuffle(idx).slice(0, 2); add({ [a]: rnd(fam.get(norm(parts[a].core))), [b]: rnd(fam.get(norm(parts[b].core))) }); }
+  return shuffle(out);
+}
 function distractors(it, field, count) {
   const same = field === 'ru' ? ARS_FOR_RU[norm(it.ru)] : null;
   const ownRu = new Set([norm(it.ru)]);
@@ -512,11 +534,13 @@ function distractors(it, field, count) {
   const tc = tokens(it[field]).length;
   const scored = pool.map(x => ({ x, s: sim(x[field], it[field]) + (tokens(x[field]).length === tc ? 0.2 : 0) + Math.random() * 0.15 }))
     .sort((a, b) => b.s - a.s);
-  const out = []; const used = new Set([norm(it[field])]);
-  for (const { x } of scored) { const v = norm(x[field]); if (used.has(v)) continue; used.add(v); out.push(x[field]); if (out.length >= count) break; }
+  const excl = field === 'ru' ? [...(RUS_FOR_AR[norm(it.ar)] || [norm(it.ru)])] : [...acceptable(it)];
+  const nMut = tc >= 3 ? count : Math.min(2, count);
+  const out = mutate(it[field], field === 'ru' ? FAM_RU : FAM_AR, field === 'ru' ? SLOT_RU : SLOT_AR, excl).slice(0, nMut);
+  const used = new Set([norm(it[field])].concat(out.map(norm)));
+  for (const { x } of scored) { if (out.length >= count) break; const v = norm(x[field]); if (used.has(v)) continue; used.add(v); out.push(x[field]); }
   return out;
 }
-const FAMS = [['вуго', 'йиго', 'буго', 'руго'], ['дун', 'мун', 'ниж', 'нуж'], ['гьев', 'гьей', 'гьеб', 'гьел'], ['гьаб', 'гьав', 'гьай', 'гьал'], ['доб', 'дов', 'дой', 'дол'], ['дир', 'дур', 'нижер', 'нужер', 'гьесул', 'гьелъул', 'гьезул']];
 function bankTokens(it) {
   const clean = (w) => w.replace(/[,.;:!?]+$/, '');
   const target = tokens(it.ar).map(clean); const tset = new Set(target.map(norm));
